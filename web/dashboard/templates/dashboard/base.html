@@ -1,0 +1,57 @@
+{% load static %}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}SkyCast{% endblock %}</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⛅</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  {% block head %}{% endblock %}
+  <link rel="stylesheet" href="{% static 'dashboard/css/app.css' %}?v={{ asset_version }}">
+</head>
+<body class="theme-cloudy-day">
+  <canvas id="fx" aria-hidden="true"></canvas>
+  <div class="bg-glow" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <a class="brand" href="{% url 'dashboard:index' %}"><span class="brand-icon">⛅</span> SkyCast</a>
+
+    <div class="search" id="search">
+      <span class="search-icon">🔍</span>
+      <input id="search-input" type="search" placeholder="Search a city…  (press /)" autocomplete="off"
+             role="combobox" aria-expanded="false" aria-controls="search-results" aria-label="Search location">
+      <ul id="search-results" class="search-results" role="listbox" hidden></ul>
+    </div>
+
+    <nav class="nav">
+      <a href="{% url 'dashboard:index' %}" class="{% if page == 'dashboard' %}active{% endif %}">Dashboard</a>
+      <a href="{% url 'dashboard:compare' %}" class="{% if page == 'compare' %}active{% endif %}">Compare</a>
+    </nav>
+
+    <div class="unit-controls">
+      <div class="seg" id="temp-unit" role="group" aria-label="Temperature unit">
+        <button data-value="c">°C</button><button data-value="f">°F</button>
+      </div>
+      <select id="wind-unit" aria-label="Wind unit">
+        <option value="kmh">km/h</option><option value="mph">mph</option>
+        <option value="ms">m/s</option><option value="kn">knots</option>
+      </select>
+    </div>
+  </header>
+
+  <main class="page">{% block content %}{% endblock %}</main>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+
+  <footer class="footer">
+    Weather data by <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a> (CC BY 4.0)
+    · Django frontend + FastAPI service
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="{% static 'dashboard/js/common.js' %}?v={{ asset_version }}"></script>
+  <script src="{% static 'dashboard/js/effects.js' %}?v={{ asset_version }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

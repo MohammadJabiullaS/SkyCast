@@ -1,0 +1,32 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+{% block title %}Compare · SkyCast{% endblock %}
+{% block content %}
+<div class="compare-page">
+  <section class="card">
+    <div class="card-head">
+      <h2>⚖️ Compare locations</h2>
+      <span class="muted small">Pick favorites, or search above to add any city</span>
+    </div>
+    <div class="chips" id="compare-picker"></div>
+  </section>
+
+  <section class="leaders" id="leaders"></section>
+  <section class="compare-grid" id="compare-cards"></section>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>7-day highs</h2>
+      <div class="tabs" id="compare-tabs">
+        <button data-metric="temp_max" class="active">Highs</button>
+        <button data-metric="temp_min">Lows</button>
+        <button data-metric="precip_prob_max">Rain chance</button>
+      </div>
+    </div>
+    <div class="chart-wrap tall"><canvas id="compare-chart"></canvas></div>
+  </section>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{% static 'dashboard/js/compare.js' %}?v={{ asset_version }}"></script>
+{% endblock %}

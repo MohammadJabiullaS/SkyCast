@@ -1,0 +1,142 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+{% block head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+{% endblock %}
+{% block content %}
+<div class="layout">
+  <aside class="sidebar">
+    <section class="card">
+      <div class="card-head">
+        <h2>⭐ Favorites</h2>
+        <button class="icon-btn" id="locate-btn" title="Use my location">📍</button>
+      </div>
+      <ul id="favorites" class="fav-list"><li class="muted small">Loading…</li></ul>
+    </section>
+    <section class="card">
+      <div class="card-head"><h2>🕘 Recent</h2><button class="link-btn" id="clear-recent">Clear</button></div>
+      <ul id="recent" class="recent-list"></ul>
+    </section>
+  </aside>
+
+  <div class="main" id="main">
+    <div id="error" class="error card" hidden></div>
+
+    <!-- Hero -->
+    <section class="hero card" id="hero">
+      <div class="hero-left">
+        <div class="loc-line">
+          <h1 id="loc-name" class="skeleton-text">Loading…</h1>
+          <button class="fav-toggle" id="fav-toggle" title="Add to favorites" aria-pressed="false">☆</button>
+        </div>
+        <div class="muted" id="loc-sub"></div>
+        <div class="clock" id="loc-clock"></div>
+        <div class="hero-temp">
+          <span class="hero-icon" id="cur-icon">⛅</span>
+          <span class="big-temp" id="cur-temp">--°</span>
+        </div>
+        <div class="hero-cond" id="cur-text"></div>
+        <div class="hero-meta" id="cur-meta"></div>
+      </div>
+      <div class="hero-right">
+        <div class="nowcast">
+          <div class="nowcast-title">Next 2 hours</div>
+          <div class="nowcast-bars" id="nowcast-bars"></div>
+          <div class="nowcast-summary" id="nowcast-summary"></div>
+        </div>
+        <div class="updated muted small">Updated <span id="updated">—</span> · <button class="link-btn" id="refresh-btn">Refresh ↻</button></div>
+      </div>
+    </section>
+
+    <!-- Insights -->
+    <section class="insights" id="insights"></section>
+
+    <!-- Activity planner -->
+    <section class="card planner" id="planner">
+      <div class="card-head">
+        <div>
+          <h2>🎯 Plan an activity</h2>
+          <div class="muted small">Best times in the next 7 days, and how sure the forecast is</div>
+        </div>
+        <label class="small muted">Length
+          <select id="plan-duration" aria-label="Activity length"></select>
+        </label>
+      </div>
+      <div class="chips" id="activity-chips"></div>
+      <div class="plan-windows" id="plan-windows"></div>
+      <div class="plan-heat-head">
+        <h3 class="sub">Hour-by-hour suitability</h3>
+        <div class="heat-legend small muted">Poor <span class="heat-scale"></span> Great</div>
+      </div>
+      <div class="plan-heat" id="plan-heat"></div>
+    </section>
+
+    <!-- Hourly -->
+    <section class="card">
+      <div class="card-head">
+        <h2 id="hourly-title">Next 48 hours</h2>
+        <div class="tabs" id="chart-tabs">
+          <button data-metric="temp" class="active">Temperature</button>
+          <button data-metric="precip">Precipitation</button>
+          <button data-metric="wind">Wind</button>
+          <button data-metric="humidity">Humidity</button>
+          <button data-metric="uv">UV</button>
+        </div>
+      </div>
+      <div class="hour-strip" id="hour-strip"></div>
+      <div class="chart-wrap"><canvas id="hourly-chart"></canvas></div>
+      <button class="link-btn small" id="reset-day" hidden>← Back to next 48 hours</button>
+    </section>
+
+    <div class="grid-2">
+      <!-- 16-day -->
+      <section class="card">
+        <div class="card-head"><h2 id="daily-title">16-day forecast</h2><span class="muted small">Click a day for hourly detail</span></div>
+        <ul class="daily" id="daily"></ul>
+      </section>
+
+      <!-- Details -->
+      <section class="details" id="details">
+        <div class="tile" id="tile-wind"><h3>💨 Wind</h3><div class="tile-body"></div></div>
+        <div class="tile" id="tile-sun"><h3>🌅 Sun</h3><div class="tile-body"></div></div>
+        <div class="tile" id="tile-uv"><h3>☀️ UV index</h3><div class="tile-body"></div></div>
+        <div class="tile" id="tile-humidity"><h3>💧 Humidity</h3><div class="tile-body"></div></div>
+        <div class="tile" id="tile-pressure"><h3>🧭 Pressure</h3><div class="tile-body"></div></div>
+        <div class="tile" id="tile-visibility"><h3>👁️ Visibility</h3><div class="tile-body"></div></div>
+        <div class="tile tile-wide" id="tile-aqi"><h3>🌬️ Air quality</h3><div class="tile-body"></div></div>
+      </section>
+    </div>
+
+    <!-- Map -->
+    <section class="card">
+      <div class="card-head">
+        <h2>🗺️ Map</h2>
+        <div class="map-controls">
+          <label class="switch"><input type="checkbox" id="radar-toggle"> Rain radar</label>
+          <span class="muted small">Click anywhere for its forecast</span>
+        </div>
+      </div>
+      <div id="map"></div>
+    </section>
+
+    <!-- Climate -->
+    <section class="card" id="climate">
+      <div class="card-head">
+        <h2>📊 Climate context</h2>
+        <button class="btn" id="climate-load">Load climate history</button>
+      </div>
+      <div id="climate-body" hidden>
+        <div class="stats" id="climate-stats"></div>
+        <div class="grid-2">
+          <div><h3 class="sub">Last 30 days</h3><div class="chart-wrap"><canvas id="recent-chart"></canvas></div></div>
+          <div><h3 class="sub" id="otd-title">On this day</h3><div class="chart-wrap"><canvas id="otd-chart"></canvas></div></div>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="{% static 'dashboard/js/dashboard.js' %}?v={{ asset_version }}"></script>
+{% endblock %}
