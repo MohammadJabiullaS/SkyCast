@@ -44,7 +44,12 @@ async def upstream_error_handler(request: Request, exc: UpstreamError):
 
 
 def meteo(request: Request) -> OpenMeteoClient:
-    return request.app.state.meteo
+    # Serverless hosts may skip lifespan events, so create the client on first use.
+    client = getattr(request.app.state, "meteo", None)
+    if client is None:
+        http = httpx.AsyncClient(timeout=20, headers={"User-Agent": "SkyCast/1.0"})
+        client = request.app.state.meteo = OpenMeteoClient(http, TTLCache())
+    return client
 
 
 def round_coord(value):

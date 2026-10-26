@@ -45,7 +45,7 @@ Browser ──► Django :8000 ──(/api/weather/* proxy)──► FastAPI :80
 Or run the two servers separately:
 
 ```bash
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 .venv/bin/python web/manage.py migrate
 .venv/bin/uvicorn weather_api.main:app --port 8001 --reload       # terminal 1
 .venv/bin/python web/manage.py runserver 127.0.0.1:8000            # terminal 2
@@ -67,6 +67,15 @@ Then open http://127.0.0.1:8000. The interactive FastAPI docs are at http://127.
 | `plan?lat=&lon=&activity=run&duration=1` | Best windows for an activity, with ensemble confidence |
 
 All values are metric. Responses are cached in memory: forecasts for 10 minutes, air quality for 30 minutes, ensemble data for 1 hour, archive data and geocoding for 24 hours.
+
+## Deploy to Vercel
+
+`app.py` is the single entrypoint Vercel runs: the FastAPI service with the Django site mounted inside it.
+Push to the connected GitHub repo, or run `vercel --prod`. Optional environment variables in Vercel:
+
+- `DJANGO_SECRET_KEY`: set this so admin logins survive cold starts.
+- `DATABASE_URL`: a Postgres URL (e.g. Vercel's Neon integration) so favorites persist. Without it,
+  favorites live in a temporary SQLite file on each serverless instance and will disappear.
 
 ## Configuration
 
