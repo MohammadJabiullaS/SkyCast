@@ -116,7 +116,8 @@ async def air_quality(request: Request, lat: float = LAT, lon: float = LON):
     raw = await meteo(request).get(AIR_QUALITY_URL, {
         "latitude": lat,
         "longitude": lon,
-        "current": "us_aqi,european_aqi,pm10,pm2_5,carbon_monoxide,nitrogen_dioxide,sulphur_dioxide,ozone,dust",
+        "current": "us_aqi,european_aqi,pm10,pm2_5,carbon_monoxide,nitrogen_dioxide,sulphur_dioxide,ozone,dust,"
+                   + POLLEN_VARS,
         "hourly": "us_aqi",
         "forecast_days": 2,
         "timezone": "auto",
@@ -125,8 +126,23 @@ async def air_quality(request: Request, lat: float = LAT, lon: float = LON):
     return {
         "current": current,
         "category": aqi_category(current.get("us_aqi")),
+        "pollen": pollen_summary(current),
         "hourly": transform.columns_to_rows(raw.get("hourly")),
     }
+
+
+POLLEN_VARS = ",".join(f"{p}_pollen" for p in planner.POLLEN_TYPES)
+
+
+def pollen_summary(current):
+    """Pollen per type plus the strongest one; None where the model has no coverage (outside Europe)."""
+    types = {p: current.get(f"{p}_pollen") for p in planner.POLLEN_TYPES}
+    known = {p: v for p, v in types.items() if v is not None}
+    if not known:
+        return None
+    top_type = max(known, key=known.get)
+    return {"types": known, "top_type": top_type, "top_value": known[top_type],
+            "level": planner.pollen_level(known[top_type])}
 
 
 @app.get("/api/v1/history/recent", summary="Observed daily weather for the last N days")
@@ -208,7 +224,7 @@ async def compare(request: Request, points: str = Query(
 @app.get("/api/v1/activities", summary="Activities the planner can score")
 async def activities():
     return {"results": [
-        {"key": k, "label": a["label"], "icon": a["icon"], "duration": a["duration"]}
+        {"key": k, "label": a["label"], "icon": a["icon"], "verb": a["verb"], "duration": a["duration"]}
         for k, a in planner.ACTIVITIES.items()
     ]}
 
@@ -227,12 +243,24 @@ async def plan(request: Request, lat: float = LAT, lon: float = LON,
         "forecast_days": 7,
         "timezone": "auto",
     }, ttl=3600)
-    raw, ensemble = await asyncio.gather(fetch_forecast(request, lat, lon), ensemble_req, return_exceptions=True)
+    air_req = meteo(request).get(AIR_QUALITY_URL, {
+        "latitude": lat,
+        "longitude": lon,
+        "hourly": "us_aqi," + POLLEN_VARS,
+        "forecast_days": 7,
+        "timezone": "auto",
+    }, ttl=1800)
+    raw, ensemble, air = await asyncio.gather(
+        fetch_forecast(request, lat, lon), ensemble_req, air_req, return_exceptions=True)
     if isinstance(raw, Exception):
         raise raw
-    if isinstance(ensemble, Exception):
-        ensemble = None  # confidence is optional; the plan still works without it
+    # Confidence, air quality and pollen are optional; the plan still works without them.
+    ensemble = None if isinstance(ensemble, Exception) else ensemble
+    air = None if isinstance(air, Exception) else air
 
     data = transform.build_weather(raw, lat, lon)
-    return planner.plan(activity, data["hourly"], data["daily"], data["now_index"],
-                        duration=duration, ensemble=ensemble, days=days)
+    planner.attach_air(data["hourly"], air)
+    result = planner.plan(activity, data["hourly"], data["daily"], data["now_index"],
+                          duration=duration, ensemble=ensemble, days=days)
+    result["air_available"] = air is not None
+    return result

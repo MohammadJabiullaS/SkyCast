@@ -76,6 +76,54 @@ def test_confidence_levels():
 def test_hot_window_is_labelled_hot_not_chilly():
     hours = [hour("2026-10-26T06:00", feels_like=25, temp=25)]
     pros, cons = planner.reasons(planner.ACTIVITIES["run"], hours)
-    assert any(c.startswith("Hot") for c in cons) and not any(c.startswith("Chilly") for c in cons)
+    assert any(c.startswith("Hot") for c in cons) and not any(c.startswith(("Chilly", "Cold")) for c in cons)
+    pros, cons = planner.reasons(planner.ACTIVITIES["run"], [hour("2026-10-26T06:00", feels_like=19.5)])
+    assert any(c.startswith("Warm") for c in cons)
     pros, cons = planner.reasons(planner.ACTIVITIES["run"], [hour("2026-10-26T06:00", feels_like=-3)])
-    assert any(c.startswith("Chilly") for c in cons)
+    assert any(c.startswith("Cold") for c in cons)
+
+
+def test_attach_air_matches_times_and_fills_forward():
+    hourly = [hour(f"2026-10-26T{h:02d}:00") for h in (7, 8)] + [hour("2026-10-27T07:00")]
+    air = {"hourly": {"time": ["2026-10-26T07:00", "2026-10-26T08:00"], "us_aqi": [40, 160],
+                      "grass_pollen": [5.0, 80.0], "birch_pollen": [12.0, 1.0]}}
+    planner.attach_air(hourly, air)
+    assert hourly[0]["aqi"] == 40 and hourly[0]["pollen"] == 12.0 and hourly[0]["pollen_type"] == "birch"
+    assert hourly[1]["pollen_type"] == "grass"
+    # Past the end of the air data: same hour of day is reused and flagged as an estimate.
+    assert hourly[2]["aqi"] == 40 and hourly[2]["air_estimated"]
+
+
+def test_bad_air_and_pollen_lower_scores_and_show_as_cons():
+    clean = planner.score_hour(planner.ACTIVITIES["walk"], hour("2026-10-26T10:00", aqi=20, pollen=2), {})
+    dirty = planner.score_hour(planner.ACTIVITIES["walk"], hour("2026-10-26T10:00", aqi=180, pollen=150,
+                                                                  pollen_type="grass"), {})
+    assert clean > 85 > 40 > dirty
+    pros, cons = planner.reasons(planner.ACTIVITIES["walk"],
+                                 [hour("2026-10-26T10:00", aqi=180, pollen=150, pollen_type="grass")])
+    assert "Air quality: Unhealthy (AQI 180)" in cons and "High grass pollen" in cons
+    # Stargazing ignores air quality entirely.
+    assert planner.score_hour(planner.ACTIVITIES["stars"], hour("2026-10-26T22:00", is_day=0, cloud_cover=0,
+                                                                  aqi=300), {}) > 85
+
+
+def test_commute_only_in_rush_hours():
+    hourly = day_hours("2026-10-26") + day_hours("2026-10-27")
+    result = planner.plan("commute", hourly, DAILY, now_index=0)
+    assert result["windows"]
+    assert all(int(w["start"][11:13]) in planner.COMMUTE_HOURS for w in result["windows"])
+
+
+def test_verdict_go_wait_and_next():
+    hourly = day_hours("2026-10-26") + day_hours("2026-10-27")
+    go = planner.plan("walk", hourly, DAILY, now_index=10)["verdict"]
+    assert go["status"] == "go" and go["blocked"] is None
+
+    dark = planner.plan("walk", hourly, DAILY, now_index=21)["verdict"]
+    assert dark["status"] == "wait" and dark["blocked"] == "it's dark"
+    assert dark["next"]["start"].startswith("2026-10-27T07")
+
+    stormy = day_hours("2026-10-26", {10: {"precip_prob": 95}})
+    wet = planner.plan("walk", stormy + day_hours("2026-10-27"), DAILY, now_index=10)["verdict"]
+    assert wet["status"] == "wait" and "95% chance of rain" in wet["cons"]
+    assert wet["next"]["start"] == "2026-10-26T11:00"  # the soonest good hour, not just the best

@@ -6,47 +6,118 @@ Reasons may contain the same unit tokens as insights ({{t:..}}, {{w:..}}).
 """
 from statistics import pstdev
 
+from .codes import aqi_category
+
+# Each rule: (field, ideal_low, ideal_high, hard_low, hard_high)
+# Inside [ideal_low, ideal_high] costs nothing; the penalty grows linearly to 100 at the hard limits.
+# Shared rules for breathing outdoors: US AQI and pollen (grains/m³, highest type).
+AIR = [("aqi", 0, 50, None, 200)]
+POLLEN = [("pollen", 0, 10, None, 200)]
+
 # Each rule: (field, ideal_low, ideal_high, hard_low, hard_high)
 # Inside [ideal_low, ideal_high] costs nothing; the penalty grows linearly to 100 at the hard limits.
 ACTIVITIES = {
     "run": {
-        "label": "Run", "icon": "🏃", "duration": 1, "daylight": "prefer",
+        "label": "Run", "icon": "🏃", "verb": "go for a run", "duration": 1, "daylight": "prefer",
         "rules": [("feels_like", 6, 17, -8, 30), ("precip_prob", 0, 20, None, 80), ("wind_speed", 0, 20, None, 45),
-                  ("uv", 0, 6, None, 10)],
+                  ("uv", 0, 6, None, 10), *AIR, *POLLEN],
     },
     "cycle": {
-        "label": "Cycle", "icon": "🚴", "duration": 2, "daylight": "require",
+        "label": "Cycle", "icon": "🚴", "verb": "go cycling", "duration": 2, "daylight": "require",
         "rules": [("feels_like", 12, 24, 0, 34), ("precip_prob", 0, 15, None, 60), ("wind_speed", 0, 15, None, 35),
-                  ("wind_gusts", 0, 30, None, 60)],
+                  ("wind_gusts", 0, 30, None, 60), *AIR, *POLLEN],
     },
     "walk": {
-        "label": "Walk", "icon": "🚶", "duration": 1, "daylight": "require",
-        "rules": [("feels_like", 12, 25, -5, 36), ("precip_prob", 0, 25, None, 85), ("wind_speed", 0, 25, None, 50)],
+        "label": "Walk", "icon": "🚶", "verb": "go for a walk", "duration": 1, "daylight": "require",
+        "rules": [("feels_like", 12, 25, -5, 36), ("precip_prob", 0, 25, None, 85), ("wind_speed", 0, 25, None, 50),
+                  *AIR, *POLLEN],
+    },
+    "commute": {
+        "label": "Commute", "icon": "🚌", "verb": "commute", "duration": 1, "daylight": "commute",
+        "rules": [("feels_like", 5, 25, -10, 38), ("precip_prob", 0, 20, None, 80), ("wind_speed", 0, 25, None, 55),
+                  ("wind_gusts", 0, 40, None, 75), ("visibility", 5000, None, 500, None), *AIR],
     },
     "bbq": {
-        "label": "BBQ / picnic", "icon": "🍖", "duration": 3, "daylight": "require",
+        "label": "BBQ / picnic", "icon": "🍖", "verb": "have a BBQ or picnic", "duration": 3, "daylight": "require",
         "rules": [("temp", 19, 29, 10, 38), ("precip_prob", 0, 10, None, 50), ("wind_speed", 0, 15, None, 35),
-                  ("cloud_cover", 0, 60, None, 100)],
+                  ("cloud_cover", 0, 60, None, 100), *AIR, *POLLEN],
     },
     "laundry": {
-        "label": "Dry laundry", "icon": "👕", "duration": 4, "daylight": "require",
+        "label": "Dry laundry", "icon": "👕", "verb": "hang the laundry out", "duration": 4, "daylight": "require",
         "rules": [("precip_prob", 0, 5, None, 40), ("humidity", 0, 60, None, 95), ("temp", 15, 40, 3, None),
-                  ("wind_speed", 6, 25, 0, 50)],
+                  ("wind_speed", 6, 25, 0, 50), *POLLEN],
     },
     "photo": {
-        "label": "Golden hour", "icon": "📷", "duration": 1, "daylight": "golden",
+        "label": "Golden hour", "icon": "📷", "verb": "shoot golden-hour photos", "duration": 1, "daylight": "golden",
         "rules": [("cloud_cover", 15, 60, None, 100), ("precip_prob", 0, 20, None, 70), ("visibility", 15000, None, 2000, None)],
     },
     "stars": {
-        "label": "Stargazing", "icon": "🔭", "duration": 2, "daylight": "night",
+        "label": "Stargazing", "icon": "🔭", "verb": "go stargazing", "duration": 2, "daylight": "night",
         "rules": [("cloud_cover", 0, 10, None, 70), ("precip_prob", 0, 10, None, 50), ("humidity", 0, 75, None, 100)],
     },
     "beach": {
-        "label": "Beach", "icon": "🏖️", "duration": 3, "daylight": "require",
+        "label": "Beach", "icon": "🏖️", "verb": "go to the beach", "duration": 3, "daylight": "require",
         "rules": [("temp", 25, 33, 18, 40), ("precip_prob", 0, 10, None, 50), ("wind_speed", 0, 18, None, 40),
-                  ("cloud_cover", 0, 40, None, 100)],
+                  ("cloud_cover", 0, 40, None, 100), *AIR, *POLLEN],
     },
 }
+
+# Typical rush hours (local time) used by the Commute activity.
+COMMUTE_HOURS = {7, 8, 9, 16, 17, 18}
+POLLEN_TYPES = ["alder", "birch", "grass", "mugwort", "olive", "ragweed"]
+
+
+def pollen_level(value):
+    """Rough cross-species scale in grains/m³ (individual species have their own thresholds)."""
+    if value is None:
+        return None
+    if value < 1:
+        return "None"
+    if value < 10:
+        return "Low"
+    if value < 50:
+        return "Moderate"
+    if value < 200:
+        return "High"
+    return "Very high"
+
+
+def attach_air(hourly, air_raw):
+    """Copy hourly US AQI and the strongest pollen type onto the forecast rows, matched by time.
+
+    The air-quality forecast stops after ~4-5 days. Later hours reuse the last known value for the
+    same hour of day (a persistence estimate), so days past the data's end aren't favoured just
+    because they have no air-quality penalty.
+    """
+    block = (air_raw or {}).get("hourly") or {}
+    times = block.get("time") or []
+    column = lambda name: block.get(name) or [None] * len(times)
+    aqi_col = column("us_aqi")
+    pollen_cols = {p: column(f"{p}_pollen") for p in POLLEN_TYPES}
+
+    measured, last_by_hour = {}, {}
+    for i, t in enumerate(times):
+        reading = {}
+        if aqi_col[i] is not None:
+            reading["aqi"] = aqi_col[i]
+        known = [(pollen_cols[p][i], p) for p in POLLEN_TYPES if pollen_cols[p][i] is not None]
+        if known:
+            value, kind = max(known)
+            reading["pollen"], reading["pollen_type"] = value, kind
+        if reading:
+            measured[t] = reading
+            last_by_hour.setdefault(t[11:13], {}).update(reading)
+
+    last_time = max(measured) if measured else None
+    for row in hourly:
+        reading = measured.get(row["time"])
+        if reading is None and last_time and row["time"] > last_time:
+            reading = last_by_hour.get(row["time"][11:13])
+            if reading:
+                row["air_estimated"] = True
+        if reading:
+            row.update(reading)
+    return hourly
 
 
 def rule_penalty(value, ideal_lo, ideal_hi, hard_lo, hard_hi):
@@ -90,11 +161,21 @@ def light_penalty(mode, hour, sun):
         return 0 if is_day else 25
     if mode == "night":
         return 0 if not is_day else 100
+    if mode == "commute":
+        return 0 if int(hour["time"][11:13]) in COMMUTE_HOURS else 100
     if mode == "golden" and rise_set:
         m = minutes(hour["time"]) + 30  # centre of the hour
         gap = min(abs(m - rise_set[0]), abs(m - rise_set[1]))
         return 0 if gap <= 60 else min(100, (gap - 60) * 2)
     return 0
+
+
+BLOCKED_REASON = {
+    "require": "it's dark",
+    "night": "it's still light",
+    "golden": "it isn't golden hour",
+    "commute": "it's outside commute hours (07:00–10:00, 16:00–19:00)",
+}
 
 
 def score_hour(activity, hour, sun):
@@ -131,10 +212,11 @@ def reasons(activity, hours):
         t_lo, t_hi = worst(t_field, min), worst(t_field)
         temp_txt = f"{{{{t:{t_lo}}}}}" if round(t_lo) == round(t_hi) else f"{{{{t:{t_lo}}}}}–{{{{t:{t_hi}}}}}"
         ideal_lo, ideal_hi = rule[t_field][0], rule[t_field][1]
-        if ideal_lo is not None and t_lo < ideal_lo and penalty(t_field, t_lo) >= 15:
-            cons.append(f"Chilly, {temp_txt}")
-        elif ideal_hi is not None and t_hi > ideal_hi and penalty(t_field, t_hi) >= 15:
-            cons.append(f"Hot, {temp_txt}")
+        cold, hot = penalty(t_field, t_lo), penalty(t_field, t_hi)
+        if ideal_lo is not None and t_lo < ideal_lo and cold >= 15:
+            cons.append(f"{'Cold' if cold >= 50 else 'Chilly'}, {temp_txt}")
+        elif ideal_hi is not None and t_hi > ideal_hi and hot >= 15:
+            cons.append(f"{'Hot' if hot >= 50 else 'Warm'}, {temp_txt}")
         else:
             pros.append(f"Comfortable {temp_txt}")
 
@@ -166,6 +248,11 @@ def reasons(activity, hours):
         hum = sum(h.get("humidity") or 0 for h in hours) / len(hours)
         (cons if penalty("humidity", hum) >= 15 else pros).append(f"{round(hum)}% humidity")
 
+    if "aqi" in rule and penalty("aqi", worst("aqi")) >= 15:
+        cons.append(f"Air quality: {aqi_category(worst('aqi'))['label']} (AQI {worst('aqi')})")
+    if "pollen" in rule and penalty("pollen", worst("pollen")) >= 15:
+        peak = max((h for h in hours if h.get("pollen") is not None), key=lambda h: h["pollen"])
+        cons.append(f"{pollen_level(peak['pollen'])} {peak['pollen_type']} pollen")
     if "uv" in rule and penalty("uv", worst("uv")) >= 15:
         cons.append(f"High UV ({worst('uv'):.0f})")
     if activity["daylight"] == "golden":
@@ -300,6 +387,7 @@ def plan(activity_key, hourly, daily, now_index, duration=None, ensemble=None, d
 
     best = [describe(s, i) for s, i in sorted(picked, key=lambda w: w[1])]
     best.sort(key=lambda w: -w["score"])
+    verdict = build_verdict(activity, horizon, scores, windows, duration, sun, describe)
 
     # Per-day best score for the heat strip summary.
     by_day = {}
@@ -307,10 +395,50 @@ def plan(activity_key, hourly, daily, now_index, duration=None, ensemble=None, d
         by_day.setdefault(h["time"][:10], []).append({"time": h["time"], "score": s})
 
     return {
-        "activity": {"key": activity_key, "label": activity["label"], "icon": activity["icon"], "duration": duration},
+        "activity": {"key": activity_key, "label": activity["label"], "icon": activity["icon"],
+                     "verb": activity["verb"], "duration": duration},
+        "verdict": verdict,
         "windows": best,
         "days": [{"date": d, "best": max(x["score"] for x in hrs), "hours": hrs} for d, hrs in by_day.items()],
         "ensemble_available": bool(ens),
+    }
+
+
+def build_verdict(activity, horizon, scores, windows, duration, sun, describe):
+    """One clear answer for right now: go, go with care, or wait (and until when)."""
+    if len(horizon) < duration:
+        return None
+    now_hours = horizon[:duration]
+    now_scores = scores[:duration]
+    now_score = round(0.6 * sum(now_scores) / duration + 0.4 * min(now_scores))
+    blocked = next((BLOCKED_REASON.get(activity["daylight"]) for h in now_hours
+                    if light_penalty(activity["daylight"], h, sun) >= 100), None)
+
+    if blocked:
+        status = "wait"
+    elif now_score >= 70:
+        status = "go"
+    elif now_score >= 50:
+        status = "caution"
+    else:
+        status = "wait"
+
+    # Next clearly better window: the soonest one that's good in its own right and beats now.
+    target = max(70, now_score + 10)
+    later = [(s, i) for s, i in windows if i > 0 and s >= target]
+    nxt = min(later, key=lambda w: w[1]) if later else None
+    if nxt is None and status != "go":
+        nxt = max(((s, i) for s, i in windows if i > 0), default=None)
+
+    now = describe(now_score, 0)
+    return {
+        "status": status,
+        "score": now_score,
+        "blocked": blocked,
+        "pros": now["pros"],
+        "cons": now["cons"],
+        "confidence": now["confidence"],
+        "next": describe(*nxt) if nxt and nxt[0] >= 40 else None,
     }
 
 

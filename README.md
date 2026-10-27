@@ -11,7 +11,11 @@ Browser ──► Django :8000 ──(/api/weather/* proxy)──► FastAPI :80
 ## Features
 
 **🎯 Activity planner (what makes SkyCast different)**
-- Pick an activity: run, cycle, walk, BBQ/picnic, dry laundry, golden-hour photos, stargazing or beach.
+- **Go / no-go verdict**: one clear answer for right now ("Yes, good time to go for a run now" or
+  "Not a good time... Best time: Fri 09:00"), with the reasons and the next better window.
+- Pick an activity: run, cycle, walk, commute (rush hours 07–10 and 16–19), BBQ/picnic, dry laundry,
+  golden-hour photos, stargazing or beach. Outdoor activities also weigh **air quality (US AQI)** and
+  **pollen** (Europe); past the ~5-day air forecast, the same hour's last known value is reused.
   SkyCast scores every hour of the next 7 days for it and suggests the **3 best time windows**
   (at most one per day), each with plain-language pros and cons.
 - **Forecast confidence**: each window is checked against 82 ensemble forecast runs (ECMWF 51 + GFS 31),
@@ -26,7 +30,7 @@ Browser ──► Django :8000 ──(/api/weather/* proxy)──► FastAPI :80
 - Smart insights: umbrella alerts, strong gusts, UV, frost/heat, "feels like" gap, day-over-day change, best time to go outside
 - 48-hour strip plus an interactive chart (temperature, precipitation, wind, humidity, UV)
 - Up to 16-day forecast with temperature range bars; click a day to see its hourly detail
-- Detail tiles: wind compass, sun arc, UV gauge, humidity and dew point, pressure, visibility, air quality (US/EU AQI and pollutants)
+- Detail tiles: wind compass, sun arc, UV gauge, humidity and dew point, pressure, visibility, air quality (US/EU AQI, pollutants and pollen)
 - Map: click anywhere for its forecast, see favorites, toggle an animated rain radar (RainViewer)
 - Climate context: last 30 days observed, and today's date across the past 30 years (normals, records, trend per decade)
 - °C/°F and km/h, mph, m/s, knots, converted in the browser with no extra requests
@@ -59,12 +63,12 @@ Then open http://127.0.0.1:8000. The interactive FastAPI docs are at http://127.
 |---|---|
 | `geocode?q=` | Place search |
 | `weather?lat=&lon=` | Current, nowcast, hourly (16 days), daily, insights |
-| `air-quality?lat=&lon=` | AQI, pollutants, 48-hour AQI |
+| `air-quality?lat=&lon=` | AQI, pollutants, pollen, 48-hour AQI |
 | `history/recent?lat=&lon=&days=30` | Observed daily weather for the last N days |
 | `history/on-this-day?lat=&lon=&years=30` | Today's date across past years, with stats and trend |
 | `compare?points=lat,lon;lat,lon` | Several places in one request |
 | `activities` | Activities the planner supports |
-| `plan?lat=&lon=&activity=run&duration=1` | Best windows for an activity, with ensemble confidence |
+| `plan?lat=&lon=&activity=run&duration=1` | Go/no-go verdict for now + best windows, scored with weather, air quality and pollen, with ensemble confidence |
 
 All values are metric. Responses are cached in memory: forecasts for 10 minutes, air quality for 30 minutes, ensemble data for 1 hour, archive data and geocoding for 24 hours.
 

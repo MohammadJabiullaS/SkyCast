@@ -305,10 +305,41 @@
       <span class="num">${score}</span></div>`;
   }
 
+  function renderVerdict(plan) {
+    const v = plan.verdict, act = plan.activity;
+    const el = $('plan-verdict');
+    if (!v) { el.innerHTML = ''; el.className = 'verdict'; return; }
+    const fmtText = t => esc(SkyCast.renderTokens(t));
+    const when = w => `${dayLabel(w.start.slice(0, 10))} ${time.hour(w.start)}–${time.hour(w.end)}`;
+    const list = items => items.map(fmtText).join(' · ');
+    let icon, title, detail;
+    if (v.status === 'go') {
+      icon = '✅'; title = `Yes, good time to ${act.verb} now`; detail = list(v.pros);
+    } else if (v.status === 'caution') {
+      icon = '⚠️'; title = `OK to ${act.verb} now, with care`; detail = list(v.cons);
+    } else {
+      icon = '⛔'; title = `Not a good time to ${act.verb} now`;
+      detail = v.blocked ? esc(`Right now ${v.blocked}.`) : list(v.cons);
+    }
+    const next = v.next
+      ? `<div class="verdict-next">${v.status === 'go' ? 'Even better' : 'Best time'}: <b>${when(v.next)}</b> · score ${v.next.score}${
+          v.next.confidence ? ` · ${v.next.confidence.level} confidence` : ''}</div>`
+      : (v.status === 'go' ? '' : '<div class="verdict-next">No good window in the next 7 days.</div>');
+    el.className = `verdict ${v.status}`;
+    el.innerHTML = `<div class="verdict-icon">${icon}</div>
+      <div class="verdict-body">
+        <div class="verdict-title">${esc(title)}</div>
+        ${detail ? `<div class="verdict-detail">${detail}</div>` : ''}
+        ${next}
+      </div>
+      ${v.blocked ? '' : ring(v.score)}`;
+  }
+
   function renderPlan() {
     const plan = state.plan;
     const act = plan.activity;
     const fmtText = t => esc(SkyCast.renderTokens(t));
+    renderVerdict(plan);
 
     $('plan-windows').innerHTML = plan.windows.length ? plan.windows.map((w, i) => {
       const conf = w.confidence;
@@ -324,7 +355,7 @@
         <ul>${w.pros.map(p => `<li class="pro">${fmtText(p)}</li>`).join('')}${w.cons.map(c => `<li class="con">${fmtText(c)}</li>`).join('')}</ul>
         <div class="conf">${conf
           ? `<span class="conf-badge conf-${conf.level}">${conf.level} confidence</span>${fmtText(conf.summary)}`
-          : 'Confidence unavailable (ensemble data missing)'}</div>
+          : plan.ensemble_available ? 'Too far ahead for confidence data' : 'Confidence unavailable right now'}</div>
       </div>`;
     }).join('') : `<div class="plan-empty">${act.icon} No good ${esc(act.label.toLowerCase())} windows in the next 7 days here. Try a shorter length or another activity.</div>`;
 
@@ -434,7 +465,18 @@
         <span class="small muted">US AQI · EU ${a.european_aqi ?? '--'}</span></div>
       <div class="gauge aqi-gauge"><span class="marker" style="left:${Math.min(100, (a.us_aqi / 300) * 100)}%"></span></div>
       <div class="note">${esc(cat.advice)}</div>
-      <div class="pollutants">${pol.map(([k, v]) => `<div class="pollutant"><div class="k">${k}</div><div class="v">${v == null ? '--' : Math.round(v)} <span class="small muted">µg/m³</span></div></div>`).join('')}</div>`;
+      <div class="pollutants">${pol.map(([k, v]) => `<div class="pollutant"><div class="k">${k}</div><div class="v">${v == null ? '--' : Math.round(v)} <span class="small muted">µg/m³</span></div></div>`).join('')}</div>
+      ${renderPollen(state.aq.pollen)}`;
+  }
+
+  function renderPollen(p) {
+    if (!p) return '<div class="pollen-row">🌼 <span class="muted">Pollen forecasts are only available in Europe.</span></div>';
+    const name = t => t[0].toUpperCase() + t.slice(1);
+    if (p.level === 'None') return '<div class="pollen-row">🌼 Pollen: <b>none right now</b></div>';
+    const others = Object.entries(p.types).filter(([t, v]) => v >= 1 && t !== p.top_type)
+      .map(([t, v]) => `${name(t)} ${Math.round(v)}`).join(', ');
+    return `<div class="pollen-row">🌼 Pollen: <b>${esc(p.level)}</b> · ${name(p.top_type)} ${Math.round(p.top_value)} grains/m³
+      ${others ? `<span class="muted">Also: ${others}</span>` : ''}</div>`;
   }
 
   // ---------- Favorites & recents ----------
